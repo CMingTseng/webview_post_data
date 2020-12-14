@@ -7,8 +7,6 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
-import com.squareup.okhttp.OkHttpClient;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -18,6 +16,9 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
+
+import okhttp3.OkHttpClient;
+import okhttp3.OkUrlFactory;
 
 
 public class WriteHandlingWebViewClient extends WebViewClient {
@@ -47,7 +48,7 @@ public class WriteHandlingWebViewClient extends WebViewClient {
             // as a starting point for supporting multiple types of HTTP requests in a full fletched browser
 
             // Construct request
-            HttpURLConnection conn = client.open(new URL(request.getUrl().toString()));
+            HttpURLConnection conn = new OkUrlFactory(client).open(new URL(request.getUrl().toString()));
             conn.setRequestMethod(request.getMethod());
 
             if ("POST".equals(request.getMethod())) {
@@ -181,7 +182,7 @@ public class WriteHandlingWebViewClient extends WebViewClient {
         String mime = response.getMimeType();
 
         // WebResourceResponse的mime必须为"text/html",不能是"text/html; charset=utf-8"
-        if (mime.contains("text/html")) {
+        if (mime!=null&& mime.contains("text/html")) {
             mime = "text/html";
         }
 
@@ -207,7 +208,7 @@ public class WriteHandlingWebViewClient extends WebViewClient {
     private InputStream injectInterceptToStream(Context context, InputStream is, String mime, String charset) {
         try {
             byte[] pageContents = Utils.consumeInputStream(is);
-            if (mime.contains("text/html")) {
+            if (mime!=null&&mime.contains("text/html")) {
                 pageContents = AjaxInterceptJavascriptInterface
                         .enableIntercept(context, pageContents)
                         .getBytes(charset);
