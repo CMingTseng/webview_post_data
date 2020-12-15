@@ -20,7 +20,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 Intent intent = new Intent(MainActivity.this, InternetActivity.class);
-                String url = "https://wallet.xiaoying.com/";
+                String url = " http://dev-bbg-web-fs.silkrode.com.tw/";
                 intent.putExtra("url", url);
                 startActivity(intent);
             }
