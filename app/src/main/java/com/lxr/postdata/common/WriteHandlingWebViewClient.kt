@@ -1,25 +1,28 @@
 package com.lxr.postdata.common
 
+import android.R.attr.mimeType
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import okhttp3.OkHttpClient
-import okhttp3.OkUrlFactory
+import okhttp3.*
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.InputStream
-import java.net.URL
-import java.nio.charset.Charset
+import java.util.concurrent.CountDownLatch
+
+
 open class WriteHandlingWebViewClient(webView: WebView) : WebViewClient() {
     private val MARKER = "AJAXINTERCEPT"
 
     /**
      * 请求参数Map集
      */
-    private val ajaxRequestContents: MutableMap<String, String>  = mutableMapOf()
+    private val ajaxRequestContents: MutableMap<String, String> = mutableMapOf()
+
     init {
         val ajaxInterface = AjaxInterceptJavascriptInterface(this)
         webView.addJavascriptInterface(ajaxInterface, "interception")
@@ -28,38 +31,66 @@ open class WriteHandlingWebViewClient(webView: WebView) : WebViewClient() {
     fun addAjaxRequest(id: String, body: String) {
         ajaxRequestContents.put(id, body)
     }
+
     /*
     ** This here is the "fixed" shouldInterceptRequest method that you should override.
     ** It receives a WriteHandlingWebResourceRequest instead of a WebResourceRequest.
     */
     fun shouldInterceptRequest(view: WebView?, request: WriteHandlingWebResourceRequest): WebResourceResponse? {
+        val latch = CountDownLatch(1)
+        var isContents: InputStream? = null
         val client = OkHttpClient()
+        var mime: String = "text/html"
+        var charset: String = "UTF-8"
+
+        val webResourceResponse = WebResourceResponse(mime, charset, isContents)
+        val headers: MutableMap<String, String> = HashMap()
+        // 解决webView跨域问题
+        // 解决webView跨域问题
+        headers["Access-Control-Allow-Origin"] =request.url.toString()
+        headers["Access-Control-Allow-Headers"] = "X-Requested-With"
+        headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS, DELETE"
+        headers["Access-Control-Allow-Credentials"] = "true"
+        webResourceResponse.responseHeaders = headers
+
         try {
             // Our implementation just parses the response and visualizes it. It does not properly handle
             // redirects or HTTP errors at the moment. It only serves as a demo for intercepting POST requests
             // as a starting point for supporting multiple types of HTTP requests in a full fletched browser
             // Construct request
-            val conn = OkUrlFactory(client).open(URL(request.url.toString()))
-            conn.requestMethod = request.method
-            if ("POST" == request.method) {
-                val os = conn.outputStream
-                try {
-                    os.write(request.getAjaxData()?.toByteArray())
-                } catch (e: IOException) {
-                    throw RuntimeException(e)
+//            val conn = OkUrlFactory(client).open(URL(request.url.toString()))
+//            conn.requestMethod = request.method
+//            if ("POST" == request.method) {
+//                val os = conn.outputStream
+//                try {
+//                    os.write(request.getAjaxData()?.toByteArray())
+//                } catch (e: IOException) {
+//                    throw RuntimeException(e)
+//                }
+//                os.close()
+//            }
+//            // Read input
+//            val charset =
+//                    if (conn.contentEncoding != null) conn.contentEncoding else Charset.defaultCharset()
+//                            .displayName()
+//            val mime = conn.contentType
+//            val pageContents: ByteArray = Utils.consumeInputStream(conn.inputStream)!!
+//
+//            // Convert the contents and return
+//            val isContents: InputStream = ByteArrayInputStream(pageContents)
+            val call = createOkHttpClient().newCall(Request.Builder().url(request?.url.toString()).method(request?.method, RequestBody.create(null, "hoge")).build())
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    latch.countDown()
                 }
-                os.close()
-            }
-            // Read input
-            val charset =
-                    if (conn.contentEncoding != null) conn.contentEncoding else Charset.defaultCharset()
-                            .displayName()
-            val mime = conn.contentType
-            val pageContents: ByteArray = Utils.consumeInputStream(conn.inputStream)!!
 
-            // Convert the contents and return
-            val isContents: InputStream = ByteArrayInputStream(pageContents)
-            return WebResourceResponse(mime, charset, isContents)
+                override fun onResponse(call: Call, response: Response) {
+                    isContents = response.body?.byteStream()
+                    latch.countDown()
+                }
+            })
+            latch.await()
+            return webResourceResponse
         } catch (ex: Exception) {
             ex.printStackTrace()
         }
@@ -200,9 +231,9 @@ open class WriteHandlingWebViewClient(webView: WebView) : WebViewClient() {
             charset: String
     ): InputStream? {
         return try {
-            var pageContents: ByteArray? =  Utils.consumeInputStream(`is`)
+            var pageContents: ByteArray? = Utils.consumeInputStream(`is`)
             if (mime != null && mime.contains("text/html")) {
-                pageContents = AjaxInterceptJavascriptInterface .enableIntercept(
+                pageContents = AjaxInterceptJavascriptInterface.enableIntercept(
                         context,
                         pageContents
                 ).toByteArray(charset(charset))
@@ -211,5 +242,24 @@ open class WriteHandlingWebViewClient(webView: WebView) : WebViewClient() {
         } catch (e: java.lang.Exception) {
             throw java.lang.RuntimeException(e.message)
         }
+    }
+
+    fun createOkHttpClient(): OkHttpClient {
+        return OkHttpClient.Builder().addNetworkInterceptor(Interceptor { chain ->
+            Log.d("TAG_TID", "okhttp intercepted: tid = " + Thread.currentThread().id)
+            Log.d("TAG_OKHTTP", "okhttp intercepted: " + chain.request().url.toString())
+            chain.proceed(chain.request())
+        }).cookieJar(object : CookieJar {
+            override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+//                        cookieStore[url.host()] = cookies
+            }
+
+            override fun loadForRequest(url: HttpUrl): MutableList<Cookie> {
+//                        val cookies = cookieStore[url.host()]
+//                        return cookies ?: ArrayList()
+                return ArrayList()
+            }
+        })
+                .build()
     }
 }
