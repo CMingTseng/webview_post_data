@@ -61,15 +61,31 @@ public class WriteHandlingWebViewClient extends WebViewClient {
                 os.close();
             }
 
+
             // Read input
             String charset = conn.getContentEncoding() != null ? conn.getContentEncoding() : Charset.defaultCharset().displayName();
-            String mime = conn.getContentType();
+            String mimeType = conn.getContentType();
+            // FIXME   Cannot set request property after connection is made
+//            conn.setRequestProperty("contentType", mimeType);
+//            conn.setRequestProperty("Accept", mimeType);
+//            conn.setRequestProperty("Accept-Charset", "utf-8");
             byte[] pageContents = Utils.consumeInputStream(conn.getInputStream());
-
+            // Ref : https://blog.csdn.net/lcw1987565/article/details/89211637
+            //Ref : https://blog.csdn.net/qq_32176125/article/details/75393783?utm_medium=distribute.pc_relevant_download.none-task-blog-BlogCommendFromBaidu-2.nonecase&depth_1-utm_source=distribute.pc_relevant_download.none-task-blog-BlogCommendFromBaidu-2.nonecas
+            //Ref : https://blog.csdn.net/salute_li/article/details/52302393?utm_medium=distribute.pc_relevant.none-task-blog-BlogCommendFromBaidu-3.control&depth_1-utm_source=distribute.pc_relevant.none-task-blog-BlogCommendFromBaidu-3.control
+            // SSL ERROR : SSL3 alert write:!:!! warning close notify  info_callback ignored
             // Convert the contents and return
             InputStream isContents = new ByteArrayInputStream(pageContents);
+            WebResourceResponse webResourceResponse= new WebResourceResponse(mimeType,charset, isContents);
+            Map<String,String> headers=new HashMap<>();
+            // 解决webView跨域问题
+            headers.put("Access-Control-Allow-Origin", request.getUrl().toString());
+            headers.put("Access-Control-Allow-Headers","X-Requested-With");
+            headers.put("Access-Control-Allow-Methods","POST, GET, OPTIONS, DELETE");
+            headers.put("Access-Control-Allow-Credentials", "true");
+            webResourceResponse.setResponseHeaders(headers);
 
-            return new WebResourceResponse(mime, charset, isContents);
+            return new WebResourceResponse(mimeType, charset, isContents);
         } catch (Exception ex) {
             ex.printStackTrace();
         }
